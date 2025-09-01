@@ -1,0 +1,103 @@
+
+/* Marvel Multiverse DR Helper — Styled Breakdown */
+.message .message-content .mmdr-breakdown {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.25);
+  font-size: 12px;
+  line-height: 1.25;
+}
+.mmdr-breakdown .mmdr-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.mmdr-chip {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  background: #243b55;
+  color: #e6f1ff;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.mmdr-chip.health { background:#3b2a2a; color:#ffd7d7; }
+.mmdr-chip.focus  { background:#243a2a; color:#d7ffe3; }
+.mmdr-chip.fantastic { background:#c62828; color:#fff; }
+.mmdr-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+.mmdr-item { opacity: .9; }
+.mmdr-item .k { display:block; font-size:10px; text-transform:uppercase; opacity:.75; }
+.mmdr-item .v { display:block; font-weight:700; }
+@media (max-width: 480px) {
+  .mmdr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+
+/* Big roll-like result line */
+.mmdr-rollline {
+  margin: 8px 0 4px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.055), rgba(0,0,0,0.12));
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.mmdr-rollline .mmdr-badge {
+  background: #c62828;
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+.mmdr-rollline.focus .mmdr-badge { background:#2e7d32; }
+.mmdr-rollline.health .mmdr-badge { background:#ad2d2d; }
+.mmdr-rollline .mmdr-badge.alt { background:#c62828; }
+.mmdr-rollline .value {
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+}
+.mmdr-rollline .formula {
+  font-size: 11px;
+  opacity: .85;
+}
+.mmdr-rollline-left { display:flex; gap:6px; align-items:center; }
+.mmdr-rollline-main { display:flex; flex-direction:column; gap:2px; }
+
+
+/* MMDR 0.9.13 UI */
+.mmdr-actions { display:flex; justify-content:center; gap:8px; margin:6px 0 8px 0; }
+.mmdr-apply-btn { padding: 4px 10px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); cursor:pointer; min-width:72px; }
+.mmdr-apply-btn:hover { background: rgba(255,255,255,0.12); }
+.mmdr-apply-btn.focus { background: rgba(38, 166, 91, 0.15); border-color: rgba(38,166,91,.35); }
+.mmdr-apply-btn.focus:hover { background: rgba(38, 166, 91, 0.28); }
+.mmdr-apply-btn.health { background: rgba(198, 40, 40, 0.15); border-color: rgba(198,40,40,.35); }
+.mmdr-apply-btn.health:hover { background: rgba(198, 40, 40, 0.28); }
+
+.mmdr-multi { margin: 6px 0 8px 0; border: 1px dashed rgba(255,255,255,.18); border-radius: 8px; padding: 6px 8px; font-size: 12px; background: rgba(0,0,0,.15); }
+.mmdr-multi .hdr { font-weight: 700; opacity: .9; margin-bottom: 4px; }
+.mmdr-multi .hdrrow { display:grid; grid-template-columns: 1.4fr .8fr .8fr; gap: 4px 8px; font-weight:700; opacity:.9; margin-bottom: 2px; }
+.mmdr-multi .hdrrow span { border-bottom: 1px solid rgba(255,255,255,.15); padding-bottom: 2px; }
+.mmdr-multi .tbl { display: grid; grid-template-columns: 1.4fr .8fr .8fr; gap: 4px 8px; align-items:center; }
+.mmdr-multi .mmdr-row { display: contents; }
+.mmdr-multi .tt { text-align:right; font-weight:700; }
+
+
+/* MMDR 0.9.14: hide detailed breakdown box */
+.mmdr-breakdown { display: none !important; }
