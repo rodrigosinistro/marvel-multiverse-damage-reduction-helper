@@ -10,7 +10,7 @@
   },
   "authors": [
     {
-      "name": "Rodrigo Miranda"
+      "name": "Rodrigo Sinistro"
     },
     {
       "name": "ChatGPT (GPT-5 Thinking)"
@@ -35,10 +35,10 @@
     "styles.css"
   ],
   "type": "module",
-  "url": "https://github.com/<GITHUB_USER>/<REPO_NAME>",
-  "manifest": "https://raw.githubusercontent.com/<GITHUB_USER>/<REPO_NAME>/main/module.json",
-  "download": "https://github.com/<GITHUB_USER>/<REPO_NAME>/releases/download/v0.9.19/marvel-multiverse-damage-reduction-helper-0.9.19.zip",
-  "readme": "https://github.com/<GITHUB_USER>/<REPO_NAME>/blob/main/README.md",
-  "changelog": "https://github.com/<GITHUB_USER>/<REPO_NAME>/releases",
-  "bugs": "https://github.com/<GITHUB_USER>/<REPO_NAME>/issues"
+  "url": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper",
+  "manifest": "https://raw.githubusercontent.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/main/module.json",
+  "download": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/releases/download/v0.9.19/marvel-multiverse-damage-reduction-helper-0.9.19.zip",
+  "readme": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/blob/main/README.md",
+  "changelog": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/releases",
+  "bugs": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/issues"
 }
