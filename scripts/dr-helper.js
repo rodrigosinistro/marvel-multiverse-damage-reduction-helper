@@ -1,6 +1,6 @@
 
 const MODULE_ID = "marvel-multiverse-damage-reduction-helper";
-const MMDR_VER = "0.9.18";
+const MMDR_VER = "0.9.37";
 
 Hooks.once("init", () => {
   try {
@@ -25,7 +25,7 @@ Hooks.once("init", () => {
 });
 
 Hooks.once("ready", () => {
-  console.log(`[MMDR] v${MMDR_VER} ready`);
+  console.log(`[MMDR] v${(game.modules?.get?.("marvel-multiverse-damage-reduction-helper")?.version || MMDR_VER)} ready`);
   Hooks.on("renderChatMessageHTML", (message, html) => {
     try { mmdrRewrite(message, html); }
     catch (e) { console.error("[MMDR] Error:", e); }
@@ -71,9 +71,17 @@ if (!window.__MMDR_DELEGATED__) {
       const xM   = /\(\s*(\d+)/i.exec(textAll);         if (xM)  X  = parseInt(xM[1],10);
       const abM  = /\+\s*[A-Za-zÀ-ÿ]+\s+score\s*(-?\d+)/i.exec(textAll); if (abM) AB = parseInt(abM[1],10);
       isFant = /\bFantastic\b/i.test(textAll);
+}
+    // Fallback: if md/X still missing, try to read the big total shown in the message (before DAMAGE button)
+    if (!(md && X)) {
+      try {
+        const nums = Array.from(String(textAll).matchAll(/\b(\d{1,3})\b/g)).map(m=>parseInt(m[1],10));
+        const maxN = nums.length ? Math.max(...nums) : 0;
+        if (maxN > 0) { if (!md) md = 1; X = maxN; }
+      } catch(e) {}
     }
 
-    // Gather actors (prefer selected targets; fallback to single findTargetActor)
+// Gather actors (prefer selected targets; fallback to single findTargetActor)
     const targets = Array.from(game.user?.targets || []);
     const actors = [];
     if (targets.length > 0) {
@@ -134,9 +142,10 @@ function dbg(...args){ try { if (safeGetSetting(MODULE_ID, "debug", false)) cons
 
 function isResultCard($html) {
   const t = ($html.text() || "").toLowerCase();
-  return /re:\s*marveldie/.test(t) || /(takes|sofre)\s+-?\d+/.test(t);
+  if (/\bre:\s*marveldie\b/i.test(t)) return true;
+  if (/\btakes\s+-?\d+\s+(?:health|focus)\s+damage\b/i.test(t)) return true;
+  return false;
 }
-
 // === MMDR Apply Utils (0.9.13) ===
 function mmdr_firstNumericPath(obj, paths) {
   for (const p of paths) {
@@ -203,23 +212,32 @@ function computeFinal(h, isFantastic){
   return Math.max(total, 0);
 }
 
+
 function detectCategory(flavor, $html){
   try {
     const text = ($html && $html.text && $html.text()) ? $html.text() : "";
-    // 1) Prefer the explicit "ability: X" line
+    const hay  = `${flavor || ""} ${text}`;
+
+    // 0) Prefer explicit damage type on the card (EN/PT)
+    const mdt = /(?:damage\s*type|damagetype)\s*:\s*([A-Za-zÀ-ÿ]+)/i.exec(hay);
+    if (mdt && mdt[1]) {
+      const dt = mdt[1].toLowerCase();
+      if (/(focus|foco)/.test(dt))  return "focus";
+      if (/(health|vida|saúde|saude)/.test(dt)) return "health";
+    }
+
+    // 1) Legacy ability line (fallback)
     const m = /ability\s*:\s*([A-Za-zÀ-ÿ]+)/i.exec(text);
     if (m && m[1]) {
       const abil = m[1].toLowerCase();
-      if (abil === "ego" || abil === "logic" || abil === "lógica") return "focus";
-      if (abil === "agility" || abil === "melee" || abil === "agilidade") return "health";
+      if (/(ego|logic|lógica|logica)/.test(abil)) return "focus";
+      if (/(agility|melee|agilidade)/.test(abil)) return "health";
     }
-    // 2) Fallback: free-text scan
-    const hay = `${flavor || ""} ${text}`;
-    if (/\b(Ego|Logic|Lógica)\b/i.test(hay)) return "focus";
+
+    // 2) Free-text fallback
+    if (/\b(Ego|Logic|Lógica|Logica)\b/i.test(hay)) return "focus";
     if (/\b(Agility|Melee|Agilidade)\b/i.test(hay)) return "health";
-  } catch (e) {
-    /* ignore */
-  }
+  } catch(e) { /* ignore */ }
   return "health";
 }
 
@@ -418,7 +436,19 @@ const drFocus = drInfo.focusDR;
       const xM  = /\(\s*(\d+)/i.exec(textAll);          const X  = xM  ? parseInt(xM[1],10)  : 0;
       const abilM = /\+\s*[A-Za-zÀ-ÿ]+\s+score\s*(-?\d+)/i.exec(textAll); const AB = abilM ? parseInt(abilM[1],10) : 0;
       const DR = Math.abs(dr);
-      let Z  = Math.max(X - DR, 0);
+// Effective (override via data-mmdr if present)
+let _md = md, _X = X, _AB = AB, _isFant = /\bFantastic\b/i.test(textAll);
+try {
+  const metaRaw = $content.attr("data-mmdr");
+  if (metaRaw) {
+    const meta = JSON.parse(metaRaw);
+    if (Number.isFinite(Number(meta.md)))  _md = Number(meta.md);
+    if (Number.isFinite(Number(meta.X)))   _X  = Number(meta.X);
+    if (Number.isFinite(Number(meta.AB)))  _AB = Number(meta.AB);
+    if (typeof meta.isFant !== "undefined") _isFant = !!meta.isFant;
+  }
+} catch(e) {}
+let Z  = Math.max(_X - DR, 0);
       const isFant = /\bFantastic\b/i.test(textAll);
       // Compute max total across selected targets for display
       let showZ = Z;
@@ -431,13 +461,13 @@ const drFocus = drInfo.focusDR;
           const DRi = Math.abs(Number(dri?.chosen ?? 0)) || 0;
           const Zi  = Math.max(X - DRi, 0);
           let toti = 0;
-          if (Zi > 0) { toti = (md * Zi) + AB; if (isFant) toti *= 2; }
+          if (Zi > 0) { toti = (_md * Zi) + _AB; if (_isFant) toti *= 2; }
           if (toti > showTotal) { showTotal = toti; showZ = Zi; }
         }
       } else {
         // Single target / fallback
         showZ = Z;
-        if (Z > 0) { showTotal = (md * Z) + AB; if (isFant) showTotal *= 2; }
+        if (Z > 0) { showTotal = (_md * Z) + _AB; if (_isFant) showTotal *= 2; }
       }
 
       const abilityNameM = /(Ego|Logic|Melee|Agility)/i.exec(textAll);
@@ -488,11 +518,27 @@ const drFocus = drInfo.focusDR;
       // Build per-target summary table (Alvo | DR | Total) using per-actor DR (no parsing)
       const targets = Array.from(game.user?.targets || []);
       if (targets.length > 0) {
-        const textAll = (($html?.text && $html.text()) || (html?.textContent || "") || "") + "";
-        const mdM  = /MarvelDie:\s*(\d+)/i.exec(textAll); const md = mdM ? parseInt(mdM[1],10) : 0;
-        const xM   = /\(\s*(\d+)/i.exec(textAll);         const X  = xM  ? parseInt(xM[1],10)  : 0;
-        const abM  = /\+\s*[A-Za-zÀ-ÿ]+\s+score\s*(-?\d+)/i.exec(textAll); const AB = abM ? parseInt(abM[1],10) : 0;
-        const isFant = /\bFantastic\b/i.test(textAll);
+        // Prefer values from our meta attached to the card
+        const metaRaw = $content.attr("data-mmdr");
+        let md = 0, X = 0, AB = 0, isFant = false;
+        try { const meta = metaRaw ? JSON.parse(metaRaw) : null; md = Number(meta?.md)||0; X = Number(meta?.X)||0; AB = Number(meta?.AB)||0; isFant = !!meta?.isFant; } catch(e) {}
+        // If still missing, fallback to text parsing
+        if (!(md && X)) {
+          const textAll = (($html?.text && $html.text()) || (html?.textContent || "") || "") + "";
+          const mdM  = /MarvelDie:\s*(\d+)/i.exec(textAll); if (mdM) md = parseInt(mdM[1],10);
+          const xM   = /\(\s*(\d+)/i.exec(textAll);         if (xM)  X  = parseInt(xM[1],10);
+          const abM  = /\+\s*[A-Za-zÀ-ÿ]+\s+score\s*(-?\d+)/i.exec(textAll); if (abM) AB = parseInt(abM[1],10);
+          isFant = /\bFantastic\b/i.test(textAll);
+        }
+        // Last resort: big number from the card
+        if (!(md && X)) {
+          try {
+            const nums = Array.from(String((($html?.text && $html.text()) || (html?.textContent || "") || "")).matchAll(/\b(\d{1,3})\b/g)).map(m=>parseInt(m[1],10));
+            const maxN = nums.length ? Math.max(...nums) : 0;
+            if (maxN > 0) { if (!md) md = 1; X = maxN; }
+          } catch(e) {}
+        }
+
 
         let rows = "";
         for (const t of targets) {
@@ -501,7 +547,7 @@ const drFocus = drInfo.focusDR;
           const DR = Math.abs(Number(drInfo?.chosen ?? 0)) || 0;
           let Z  = Math.max(X - DR, 0);
           let tot = 0;
-          if (Z > 0) { tot = (md * Z) + AB; if (isFant) tot *= 2; }
+          if (Z > 0) { tot = (md * Z) + AB; if (_isFant) tot *= 2; }
           rows += `<div class="mmdr-row"><span class="nm">${actor.name}</span><span class="dr">DR ${DR}</span><span class="tt">${tot}</span></div>`;
         }
         if (rows) {
@@ -535,8 +581,19 @@ const drFocus = drInfo.focusDR;
       const xM  = /\(\s*(\d+)/i.exec(textAll);          const X  = xM  ? parseInt(xM[1],10)  : 0;
       const abilM = /\+\s*[A-Za-zÀ-ÿ]+\s+score\s*(-?\d+)/i.exec(textAll); const AB = abilM ? parseInt(abilM[1],10) : 0;
       const DR = Math.abs(dr);
-      let Z  = Math.max(X - DR, 0);
-      const isFant = /\bFantastic\b/i.test(textAll);
+      // Effective values (allow meta override)
+      let _md = md, _X = X, _AB = AB, _isFant = /\bFantastic\b/i.test(textAll);
+      try {
+        const metaRaw = $content.attr("data-mmdr");
+        if (metaRaw) {
+          const meta = JSON.parse(metaRaw);
+          if (Number.isFinite(Number(meta.md)))  _md = Number(meta.md);
+          if (Number.isFinite(Number(meta.X)))   _X  = Number(meta.X);
+          if (Number.isFinite(Number(meta.AB))) _AB = Number(meta.AB);
+          if (typeof meta.isFant !== "undefined") _isFant = !!meta.isFant;
+        }
+      } catch(e) {}
+      let Z  = Math.max(_X - DR, 0);
       const chipFant = isFant ? '<span class="mmdr-chip fantastic">Fantastic</span>' : '';
       const box = `
       <div class="mmdr-breakdown">
