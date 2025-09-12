@@ -1,7 +1,7 @@
 {
   "id": "marvel-multiverse-damage-reduction-helper",
   "title": "Marvel Multiverse – Damage Reduction Helper",
-  "version": "0.9.37",
+  "version": "0.9.74",
   "description": "Fix Focus DR and zero-damage when multiplier is 0; prefer defender name on 'takes/sofre' line.",
   "compatibility": {
     "minimum": "11",
@@ -17,7 +17,7 @@
     }
   ],
   "esmodules": [
-    "scripts/dr-helper.js"
+    "scripts/dr-helper-v0.9.74.js"
   ],
   "languages": [
     {
@@ -37,7 +37,7 @@
   "type": "module",
   "url": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper",
   "manifest": "https://raw.githubusercontent.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/main/module.json",
-  "download": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/releases/download/v0.9.37/marvel-multiverse-damage-reduction-helper-0.9.37.zip",
+  "download": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/releases/download/v0.9.74/marvel-multiverse-damage-reduction-helper-0.9.74.zip",
   "readme": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/blob/main/README.md",
   "changelog": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/releases",
   "bugs": "https://github.com/rodrigosinistro/marvel-multiverse-damage-reduction-helper/issues"
