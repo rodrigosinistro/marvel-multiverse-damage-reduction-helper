@@ -1,5 +1,5 @@
 const MODULE_ID = "marvel-multiverse-damage-reduction-helper";
-const MMDR_VER  = "0.9.45";
+const MMDR_VER  = "0.9.49";
 
 /* ---------------- Settings / Debug ---------------- */
 Hooks.once("init", () => {
@@ -14,6 +14,22 @@ Hooks.once("init", () => {
 Hooks.once("ready", () => { console.log(`[MMDR] v${MMDR_VER} ready`); });
 
 function dbg(...args){ try { if (game.settings.get(MODULE_ID, "debug")) console.log("[MMDR]", ...args); } catch(e){} }
+
+/* ---------------- Stamp authoritative targets on message creation ---------------- */
+Hooks.on("preCreateChatMessage", (doc, data, options, userId) => {
+  try {
+    if (game.user?.id !== userId) return; // only the author stamps
+    const tgts = Array.from(game.user?.targets || []);
+    const ids = tgts.map(t => t?.document?.uuid || t?.document?.id || t?.id).filter(Boolean);
+    if (!ids.length) return;
+    data.flags = data.flags || {};
+    data.flags[MODULE_ID] = Object.assign({}, data.flags[MODULE_ID], {
+      authorUserId: userId,
+      authorTargets: ids
+    });
+    dbg("stamped targets", ids);
+  } catch(e){ console.warn("[MMDR] preCreateChatMessage error", e); }
+});
 
 /* ---------------- Utilities ---------------- */
 function gp(obj, path){
@@ -34,7 +50,8 @@ function sp(obj, path, value){
 
 function categoryFromText(text){
   const t = (text||"").toLowerCase();
-  return t.includes("damagetype: focus") || t.includes("damage type: focus") || t.includes("focus") ? "focus" : "health";
+  if (t.includes("damagetype: focus") || t.includes("damage type: focus") || t.includes("focus damage")) return "focus";
+  return "health";
 }
 function readDR(actor, category){
   try { return Number(actor?.system?.[category === "focus" ? "focusDamageReduction" : "healthDamageReduction"] ?? 0) || 0; }
@@ -58,88 +75,96 @@ async function applyDelta({ actor, category, delta, heal }){
 function isSystemDamageMessage(rootEl){
   try {
     const t = (rootEl?.textContent || "").toLowerCase();
-    // don't re-process if we already injected our UI
-    if (rootEl?.querySelector?.(".mmdr-rollline")) return false;
+    if (rootEl?.querySelector?.(".mmdr-rollline")) return false; // already processed
     return t.includes("damage multiplier") || t.includes("multiplicador de dano");
   } catch(e){ return false; }
 }
 
-/* --- Parse numbers from system text --- */
+/* --- Parse numbers from system text (including printed DR & total) --- */
 function parseNumbersFrom(rootEl){
   const textAll = rootEl?.textContent || "";
-  let md = 0, X = 0, AB = 0, isFant = false;
+  let md = 0, X = 0, AB = 0, isFant = false, parsedDR = null, printedTotal = null;
   try { const m = /MarvelDie:\s*(\d+)/i.exec(textAll); if (m) md = parseInt(m[1],10); } catch(e){}
-  try { const m = /\(\s*(\d+)[^\)]*damageReduction\s*:\s*-?\d+[^\)]*=\s*-?\d+\s*\)/i.exec(textAll); if (m) X = parseInt(m[1],10); } catch(e){}
+  try {
+    const m = /\(\s*(\d+)\s*-\s*damageReduction\s*:\s*(-?\d+)\s*=\s*(-?\d+)\s*\)/i.exec(textAll);
+    if (m) { X = parseInt(m[1],10); parsedDR = parseInt(m[2],10); }
+  } catch(e){}
+  if (!X) { try { const m = /\(\s*(\d+)[^\)]*damageReduction/i.exec(textAll); if (m) X = parseInt(m[1],10); } catch(e){} }
   try { const m = /\+\s*[A-Za-zÀ-ÿ]+\s+score\s*(-?\d+)/i.exec(textAll); if (m) AB = parseInt(m[1],10); } catch(e){}
   isFant = /\bFantastic\b/i.test(textAll) || /\bFantástico\b/i.test(textAll);
-  return { md, X, AB, isFant };
+  try {
+    const m = /\btakes\s+(\d+)\s+(?:Fantastic\s+)?(?:health|focus)\s+damage\b/i.exec(textAll);
+    if (m) printedTotal = parseInt(m[1], 10);
+  } catch(e){}
+  return { md, X, AB, isFant, parsedDR, printedTotal };
 }
 
-/* --- Extract target names from system message (works for everyone) --- */
+/* --- Extract target names from message --- */
 function extractTargetNames(rootEl){
-  const names = [];
+  const names = new Set();
   try {
-    // Common pattern: "<strong>Magnus</strong> takes N health damage."
-    const strongs = rootEl.querySelectorAll("p strong, .message-content strong, strong");
-    if (strongs && strongs.length) {
-      // pick the first strong in the first paragraph
-      const p = rootEl.querySelector("p");
+    const content = rootEl.querySelector?.(".message-content") || rootEl;
+    content.querySelectorAll?.("strong")?.forEach(s => {
+      const n = s.textContent?.trim(); if (n) names.add(n);
+    });
+    if (!names.size) {
+      const p = content.querySelector?.("p");
       if (p) {
-        const s = p.querySelector("strong");
-        if (s) names.push(s.textContent.trim());
-      } else {
-        names.push(strongs[0].textContent.trim());
+        const s = p.querySelector?.("strong");
+        if (s?.textContent) names.add(s.textContent.trim());
       }
     }
-    // Fallback: regex "NAME takes/recebe/sofre"
-    if (!names.length) {
-      const t = (rootEl.textContent || "").trim();
+    if (!names.size) {
+      const t = (content.textContent || "").trim();
       const m = /^([\wÀ-ÿ' -]+)\s+(takes|recebe|sofre)\b/i.exec(t);
-      if (m) names.push(m[1].trim());
+      if (m) names.add(m[1].trim());
     }
   } catch(e){}
-  return names;
+  return Array.from(names);
 }
 function resolveTokenUUIDsFromNames(names){
-  const uuids = [];
+  const uuids = new Set();
   try {
-    for (const nm of names) {
-      const tok = (canvas?.tokens?.placeables || []).find(t => String(t?.name||"").trim() === nm);
-      if (tok?.document?.uuid) uuids.push(tok.document.uuid);
-      else {
-        // fallback via actor name
-        const act = game.actors?.find(a => String(a?.name||"").trim() === nm);
-        if (act) {
-          // pick an active token, if any
-          const tok2 = canvas?.tokens?.placeables?.find(t => t?.actor?.id === act.id);
-          if (tok2?.document?.uuid) uuids.push(tok2.document.uuid);
-        }
-      }
+    const toks = (canvas?.tokens?.placeables || []);
+    const norm = s => String(s||"").trim().toLowerCase();
+    for (const nmRaw of names) {
+      const nm = norm(nmRaw);
+      // 1) tokens whose displayed name contains nm
+      toks.filter(t => norm(t?.name).includes(nm)).forEach(t => { if (t?.document?.uuid) uuids.add(t.document.uuid); });
+      // 2) tokens by actor name contains nm
+      toks.filter(t => norm(t?.actor?.name).includes(nm)).forEach(t => { if (t?.document?.uuid) uuids.add(t.document.uuid); });
+      // 3) actor exact/fuzzy -> tokens of that actor
+      const act = game.actors?.find(a => norm(a?.name) === nm) || game.actors?.find(a => norm(a?.name).includes(nm));
+      if (act) toks.filter(t => t?.actor?.id === act.id).forEach(t => { if (t?.document?.uuid) uuids.add(t.document.uuid); });
     }
   } catch(e){}
-  return uuids;
+  return Array.from(uuids);
 }
 
-/* --- UI builder (keeps 0.9.37 look) --- */
+/* --- Build UI --- */
 function appendUI(message, rootEl){
   const nums = parseNumbersFrom(rootEl);
   const category = categoryFromText(rootEl?.textContent || "");
   if (!(nums.md && nums.X)) return;
 
-  const names = extractTargetNames(rootEl);
-  const targetUUIDs = resolveTokenUUIDsFromNames(names);
-
-  // compute preview with first target DR
-  let DR = 0;
-  if (targetUUIDs.length) {
-    try {
-      const doc = fromUuidSync(targetUUIDs[0]);
-      DR = Math.abs(readDR(doc?.actor, category));
-    } catch(e){}
+  const authorTargets = message?.flags?.[MODULE_ID]?.authorTargets || [];
+  let targetUUIDs = Array.isArray(authorTargets) ? authorTargets.slice() : [];
+  if (!targetUUIDs.length) {
+    const names = extractTargetNames(rootEl);
+    targetUUIDs = resolveTokenUUIDsFromNames(names);
   }
-  const Z = Math.max(nums.X - DR, 0);
-  let total = Z > 0 ? (nums.md * Z) + nums.AB : 0;
-  if (nums.isFant) total *= 2;
+
+  let displayTotal = nums.printedTotal;
+  if (displayTotal == null) {
+    let previewDR = 0;
+    if (targetUUIDs.length) {
+      try { const doc = fromUuidSync(targetUUIDs[0]); previewDR = Math.abs(readDR(doc?.actor, category)); } catch(e){}
+    } else if (nums.parsedDR !== null) previewDR = Math.abs(Number(nums.parsedDR)||0);
+    const Z = Math.max(nums.X - previewDR, 0);
+    let tot = Z > 0 ? (nums.md * Z) + nums.AB : 0;
+    if (nums.isFant) tot *= 2;
+    displayTotal = tot;
+  }
 
   const abilityName = category === "focus" ? "Ego/Logic" : "Melee/Agility";
   const badgeCat = category.toUpperCase();
@@ -155,8 +180,8 @@ function appendUI(message, rootEl){
         ${nums.isFant ? '<div class="mmdr-badge alt">FANTASTIC</div>' : ''}
       </div>
       <div class="mmdr-rollline-main">
-        <div class="value">${total}</div>
-        <div class="formula">${nums.md} × ${Math.max(nums.X - DR, 0)} + ${abilityName} ${nums.AB >= 0 ? '+'+nums.AB : nums.AB}</div>
+        <div class="value">${displayTotal}</div>
+        <div class="formula">${nums.md} × ? + ${abilityName} ${nums.AB >= 0 ? '+'+nums.AB : nums.AB}</div>
       </div>
     </div>
     <div class="mmdr-actions">
@@ -173,31 +198,10 @@ function appendUI(message, rootEl){
   `;
 
   $content.appendChild(wrap);
-
-  // Multi-target summary if more than one resolved
-  if (targetUUIDs.length > 1) {
-    const tbl = document.createElement("div");
-    tbl.className = "mmdr-multi";
-    let rows = `<div class="hdr">RESUMO POR ALVO</div><div class="tbl"><div class="hdrrow"><span>ALVO</span><span>DR</span><span>TOTAL</span></div>`;
-    for (const uuid of targetUUIDs) {
-      try {
-        const doc = fromUuidSync(uuid);
-        const actor = doc?.actor;
-        const d = Math.abs(readDR(actor, category));
-        const z = Math.max(nums.X - d, 0);
-        let tot = z > 0 ? (nums.md * z) + nums.AB : 0;
-        if (nums.isFant) tot *= 2;
-        rows += `<div class="mmdr-row"><span class="nm">${doc?.name || actor?.name || "?"}</span><span class="dr">${d}</span><span class="tt">${tot}</span></div>`;
-      } catch(e){}
-    }
-    rows += `</div>`;
-    tbl.innerHTML = rows;
-    $content.appendChild(tbl);
-  }
 }
 
 /* --- Hook handlers --- */
-function handleRender(message, htmlOrEl, data){
+function handleRender(message, htmlOrEl){
   try {
     const rootEl = (htmlOrEl instanceof HTMLElement) ? htmlOrEl : (htmlOrEl?.[0] || null);
     if (!rootEl) return;
@@ -205,13 +209,10 @@ function handleRender(message, htmlOrEl, data){
     appendUI(message, rootEl);
   } catch(e){ console.warn("[MMDR] render error", e); }
 }
-
-// v13+
 Hooks.on("renderChatMessageHTML", handleRender);
-// legacy fallback
 Hooks.on("renderChatMessage", handleRender);
 
-/* --- Clicks --- */
+/* --- Clicks (robust target resolution) --- */
 document.addEventListener("click", async (ev) => {
   const btn = ev.target?.closest?.(".mmdr-apply-btn");
   if (!btn) return;
@@ -220,10 +221,33 @@ document.addEventListener("click", async (ev) => {
     const X     = Number(btn.getAttribute("data-x"))    || 0;
     const AB    = Number(btn.getAttribute("data-ab"))   || 0;
     const isFant= Number(btn.getAttribute("data-fant")) === 1;
-    const category = btn.getAttribute("data-category") || "health";
+    let category = btn.getAttribute("data-category") || "health";
     const action   = btn.getAttribute("data-action")   || "full";
-    const targetsStr = btn.getAttribute("data-targets") || "";
-    const uuids = targetsStr.split(",").map(s=>s.trim()).filter(Boolean);
+    let targetsStr = btn.getAttribute("data-targets") || "";
+    let uuids = targetsStr.split(",").map(s=>s.trim()).filter(Boolean);
+
+    const msgEl = btn.closest(".chat-message, li.message, [data-message-id]") || document;
+    const mid = msgEl?.dataset?.messageId;
+    const msg = (mid && (game.messages?.get?.(mid) || (game.messages?.contents||[]).find(m=>m.id===mid))) || null;
+
+    // Union with stamped targets if present
+    const flagged = msg?.flags?.[MODULE_ID]?.authorTargets;
+    if (Array.isArray(flagged)) {
+      flagged.forEach(u => { if (u) uuids.push(u); });
+    }
+
+    // Late name-based resolution
+    if (!uuids.length) {
+      category = categoryFromText(msgEl?.textContent || category);
+      const names = extractTargetNames(msgEl);
+      const fromNames = resolveTokenUUIDsFromNames(names);
+      uuids = uuids.concat(fromNames);
+    }
+
+    // Deduplicate
+    uuids = Array.from(new Set(uuids.filter(Boolean)));
+
+    dbg("click resolved", { mid, category, uuids });
 
     if (!uuids.length) { ui.notifications?.warn?.("MMDR: nenhum alvo encontrado."); return; }
 
@@ -255,6 +279,8 @@ document.addEventListener("click", async (ev) => {
       const human = results.map(r => `${r.name} ${r.heal?"+":"-"}${r.delta}`).join(", ");
       try { await ChatMessage.create({ content: `<div class="mmdr-report">MMDR ${verb} [${CAT}]: ${human}</div>` }); } catch(e){}
       ui.notifications?.info?.(`MMDR ${verb} [${CAT}]: ${human}`);
+      // persist uuids on the element to speed up next clicks
+      btn.setAttribute("data-targets", uuids.join(","));
     } else {
       ui.notifications?.warn?.("MMDR: nenhum alvo encontrado.");
     }
